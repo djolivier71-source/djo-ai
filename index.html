@@ -159,7 +159,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
     <div class="thumbs" id="chatThumb"></div>
     <div class="in">
       <label class="cbtn" title="Ajouter une photo">📷<input type="file" id="chatImg" accept="image/*"></label>
-      <textarea id="chatIn" rows="1" placeholder="Écris à Djo AI…"></textarea>
+      <textarea id="chatIn" rows="1" placeholder="Écris ou demande une image…"></textarea>
       <button class="cbtn mic" data-mic="#chatIn" data-compact="1" title="Dicter">🎤</button>
       <button class="cbtn send" id="chatSend" title="Envoyer">➤</button>
     </div>
@@ -736,7 +736,10 @@ document.addEventListener('click',e=>{
 });
 
 /* ================= CHAT (façon ChatGPT) ================= */
-const CHAT_SYS="Tu es Djo AI, l'assistant IA personnel d'Olivier. Tu réponds en français (sauf si on te parle dans une autre langue), de façon claire, chaleureuse et utile. Tu peux aider à écrire, expliquer, traduire, trouver des idées, et rédiger des descriptions (prompts) d'images, de vidéos ou de chansons. Utilise des listes et du **gras** quand ça aide la lecture. Va droit au but.";
+const CHAT_SYS="Tu es Djo AI, l'assistant IA personnel d'Olivier. Tu le tutoies. Tu réponds en français (sauf si on te parle dans une autre langue). RÈGLE ESSENTIELLE : ne pose JAMAIS de questions pour clarifier une demande, ne demande pas de précisions, de plateforme, de style ou de détails. Fais immédiatement ce qu'on te demande, en choisissant toi-même les options les plus pertinentes et créatives. Si on te demande un prompt (image, vidéo, musique), donne directement le prompt prêt à copier, sans explication autour, éventuellement suivi d'une variante courte. Réponses courtes et utiles, va droit au but. Utilise des listes et du **gras** seulement si ça aide la lecture.";
+const IMG_PROMPT_SYS="Tu transformes la demande de l'utilisateur en UN prompt riche pour un générateur d'images : sujet, décor, action, lumière, cadrage, ambiance, style, détails. 70 mots maximum, une seule phrase fluide, sans guillemets, sans explication. Si un style est demandé, respecte-le. Réponds uniquement par le prompt.";
+const IMG_INTENT=/\b(cr[ée]e[sr]?|g[ée]n[èe]re[rs]?|fai[st]|faire|dessine[rs]?|montre[sr]?|imagine[sr]?|produi[st]|r[ée]alise[sr]?|draw|make|create|generate)\b[^.?!]{0,40}\b(image|images|photo|photos|dessin|illustration|logo|affiche|poster|portrait|picture|wallpaper|fond d'[ée]cran)\b/i;
+const PROMPT_ONLY=/\bprompt\b/i;
 let CHATS=store.get('chats',[]),CUR=store.get('chatCur',null),chatImg=null,chatAbort=null;
 function saveChats(){try{localStorage.setItem('vs_chats',JSON.stringify(CHATS));store.set('chatCur',CUR)}catch(e){
   // stockage plein : on retire les photos des anciens messages
@@ -752,7 +755,10 @@ function md(t){
     const ul=line.match(/^\s*[-•*]\s+(.*)/),ol=line.match(/^\s*\d+[.)]\s+(.*)/),h=line.match(/^#{1,4}\s+(.*)/);
     if(ul||ol){const tag=ul?'ul':'ol';if(!list||list.tag!==tag){if(list)out.push('</'+list.tag+'>');list={tag};out.push('<'+tag+'>')}out.push('<li>'+(ul||ol)[1]+'</li>');continue}
     if(list){out.push('</'+list.tag+'>');list=null}
-    if(h)out.push('<h4>'+h[1]+'</h4>');else if(line.trim()==='')out.push('');else out.push('<p>'+line+'</p>');
+    const bq=line.match(/^\s*&gt;\s?(.*)/);
+    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line))out.push('<hr style="border:0;border-top:1px solid var(--line);margin:10px 0">');
+    else if(bq)out.push('<p style="border-left:3px solid var(--acc2);padding-left:10px;color:var(--txt)">'+bq[1]+'</p>');
+    else if(h)out.push('<h4>'+h[1]+'</h4>');else if(line.trim()==='')out.push('');else out.push('<p>'+line+'</p>');
   }
   if(list)out.push('</'+list.tag+'>');
   return out.join('').replace(/\u0000(\d+)\u0000/g,(m,i)=>blocks[i]);
@@ -768,6 +774,12 @@ function speak(t,btn){
 function msgEl(m){
   const d=document.createElement('div');d.className='msg '+(m.role==='user'?'u':'a');
   if(m.role==='user'){d.innerHTML=(m.img?`<img class="att" src="${m.img}">`:'')+esc(m.content)}
+  else if(m.genImg){d.innerHTML=`<img class="att" src="${m.genImg}" style="max-width:100%;width:280px;cursor:pointer"><div class="body">${md(m.content)}</div><div class="macts"><button data-a="anim">🎬 Animer</button><button data-a="dl">⬇️ Télécharger</button><button data-a="again">🔁 Une autre</button></div>`;
+    d.querySelector('img').onclick=()=>{$('#mTitle').textContent='Image';$('#mBody').innerHTML=`<img src="${m.genImg}">`;$('#mPrompt').textContent=m.prompt||'';$('#mActs').innerHTML='';$('#modal').classList.add('on')};
+    d.querySelector('.macts').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+      if(b.dataset.a==='anim')useAsFrame(m.genImg);
+      if(b.dataset.a==='dl')downloadAny(m.genImg,'djo-ai-'+Date.now()+'.jpg');
+      if(b.dataset.a==='again'){$('#chatIn').value=m.ask||('Crée une autre image : '+(m.prompt||''));sendChat()}}}
   else{d.innerHTML=`<div class="body">${md(m.content)}</div><div class="macts"><button data-a="copy">📋 Copier</button><button data-a="read">🔊 Lire</button><button data-a="img">🎨 En image</button></div>`;
     d.querySelector('.macts').onclick=e=>{const b=e.target.closest('button');if(!b)return;
       if(b.dataset.a==='copy'){navigator.clipboard&&navigator.clipboard.writeText(m.content).then(()=>toast('Copié ✓'),()=>toast('Copie impossible',1))}
@@ -778,7 +790,7 @@ function msgEl(m){
 function renderChat(){
   const c=curChat();renderSel();const log=$('#chatLog');log.innerHTML='';
   if(!c.msgs.length){log.innerHTML=`<div class="welcome"><div class="big">💬</div><div style="font-weight:700;color:var(--txt);font-size:18px">Bonjour Olivier, je t'écoute !</div><div>Pose une question, envoie une photo ou appuie sur 🎤 pour parler.</div><div class="sugg">
-    <button>✍️ Écris-moi un texte pour présenter ma micro-entreprise</button><button>🎬 Donne-moi 5 idées de courts-métrages IA originaux</button><button>🎵 Écris les paroles d'une chanson sur l'été, pour Suno</button><button>🖼️ Aide-moi à décrire une image de dragon très détaillée</button></div></div>`;
+    <button>✍️ Écris-moi un texte pour présenter ma micro-entreprise</button><button>🎬 Donne-moi 5 idées de courts-métrages IA originaux</button><button>🎵 Écris les paroles d'une chanson sur l'été, pour Suno</button><button>🖼️ Crée une image d'un dragon rouge au-dessus de Paris la nuit</button></div></div>`;
     log.querySelectorAll('.sugg button').forEach(b=>b.onclick=()=>{$('#chatIn').value=b.textContent.replace(/^\S+\s/,'');sendChat()});return}
   c.msgs.forEach(m=>log.appendChild(msgEl(m)));
   setTimeout(()=>window.scrollTo(0,document.body.scrollHeight),30);
@@ -818,8 +830,24 @@ async function sendChat(){
   c.msgs.push(um);if(c.title==='Nouvelle conversation')c.title=um.content.slice(0,40)+(um.content.length>40?'…':'');
   ta.value='';ta.style.height='';chatImg=null;$('#chatThumb').innerHTML='';saveChats();renderChat();
   const log=$('#chatLog');const bubble=document.createElement('div');bubble.className='msg a';bubble.innerHTML='<div class="typing"><span></span><span></span><span></span></div>';log.appendChild(bubble);window.scrollTo(0,document.body.scrollHeight);
+  // Demande d'image → on la crée directement dans le chat
+  if(IMG_INTENT.test(um.content)&&!PROMPT_ONLY.test(um.content)){
+    const send=$('#chatSend');send.disabled=true;
+    bubble.innerHTML='<div class="typing"><span></span><span></span><span></span></div> 🎨 Je crée ton image…';
+    try{
+      let prompt=um.content;
+      try{prompt=await chat(IMG_PROMPT_SYS,um.content,{temperature:.8,max_tokens:250})}catch(e){}
+      const ratio=/portrait|vertical|story|t[ée]l[ée]phone|fond d'[ée]cran/i.test(um.content)?'9:16':/paysage|horizontal|banni[èe]re|youtube|16[:/]9/i.test(um.content)?'16:9':'1:1';
+      const url=await genImage(prompt,ratio,um.img?[um.img]:[]);
+      const it=await save('image',url,prompt);
+      let thumb=url;try{if(it.blob)thumb=await fileToSmallDataURL(it.blob,768)}catch(e){}
+      c.msgs.push({role:'assistant',content:'Voilà ton image 🎨 (elle est aussi dans ta Galerie)',genImg:thumb,prompt,ask:um.content});saveChats();
+      if($('#chatVoice').checked)speak('Voilà ton image.');
+    }catch(e){c.msgs.push({role:'assistant',content:'⚠️ Je n\'ai pas pu créer l\'image : '+e.message});saveChats()}
+    send.disabled=false;renderChat();return;
+  }
   // historique envoyé : 20 derniers messages, photo seulement pour le dernier message
-  const hist=c.msgs.slice(-20).map((m,i,arr)=>{if(m.img&&i===arr.length-1)return{role:m.role,content:[{type:'text',text:m.content},{type:'image_url',image_url:{url:m.img}}]};return{role:m.role,content:m.content}});
+  const hist=c.msgs.slice(-20).map((m,i,arr)=>{if(m.genImg)return{role:'assistant',content:'[Image créée avec le prompt : '+(m.prompt||'')+']'};if(m.img&&i===arr.length-1)return{role:m.role,content:[{type:'text',text:m.content},{type:'image_url',image_url:{url:m.img}}]};return{role:m.role,content:m.content}});
   const send=$('#chatSend');chatAbort=new AbortController();send.textContent='■';send.title='Arrêter';
   let got='';
   try{
