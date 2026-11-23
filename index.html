@@ -98,6 +98,8 @@ canvas.wave{width:100%;height:90px;display:block;background:var(--card2);border-
 .sw i:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
 .sw input:checked+i{background:var(--acc2)}
 .sw input:checked+i:before{transform:translateX(18px)}
+.mic.on{background:var(--err);border-color:var(--err);color:#fff;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.6}}
 input[type=range]{width:100%;accent-color:var(--acc)}
 .log{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--mut);max-height:160px;overflow:auto;white-space:pre-wrap;background:var(--card2);border-radius:10px;padding:8px}
 </style>
@@ -118,6 +120,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
     <label class="l">Ta description</label>
     <textarea id="imgPrompt" placeholder="Ex : un moine shaolin sur une falaise au lever du soleil, brume, lumière dorée"></textarea>
     <div class="row mt" style="gap:8px">
+      <button class="mini mic" data-mic="#imgPrompt">🎤 Dicter</button>
       <button class="mini" id="imgEnhance">✨ Améliorer avec l'IA</button>
       <button class="mini" id="imgIdea">🎲 Idée au hasard</button>
     </div>
@@ -145,6 +148,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
     <label class="l">Que se passe-t-il dans la vidéo ?</label>
     <textarea id="vidPrompt" placeholder="Ex : la caméra avance lentement vers le moine qui ouvre les yeux, le vent soulève sa robe"></textarea>
     <div class="row mt" style="gap:8px">
+      <button class="mini mic" data-mic="#vidPrompt">🎤 Dicter</button>
       <button class="mini" id="vidEnhance">✨ Écrire le plan comme un réalisateur</button>
     </div>
   </div>
@@ -171,6 +175,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
   <div class="card">
     <label class="l">Quel morceau veux-tu ?</label>
     <textarea id="musPrompt" placeholder="Ex : musique de générique de film d'action, tendue et épique"></textarea>
+    <div class="row mt" style="gap:8px"><button class="mini mic" data-mic="#musPrompt" style="flex:none">🎤 Dicter</button></div>
     <label class="l mt">Ambiance</label>
     <div class="chips" id="musMood"></div>
     <label class="l mt">Durée : <b id="musDurLab">60 s</b></label>
@@ -653,6 +658,26 @@ function openItem(it,src){
 function closeM(){$('#modal').classList.remove('on');$('#mBody').querySelectorAll('video,audio').forEach(v=>v.pause())}
 $('#mClose').onclick=closeM;
 let clearArm=0;$('#galClear').onclick=async e=>{if(Date.now()-clearArm>3000){clearArm=Date.now();e.target.textContent='Toucher encore pour confirmer';return}const all=await dbAll();for(const i of all)await dbDel(i.id);e.target.textContent='Vider la galerie';toast('Galerie vidée')};
+
+/* ================= DICTÉE VOCALE ================= */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,recBtn=null;
+function stopMic(){if(rec){try{rec.stop()}catch(e){}}}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.mic');if(!b)return;
+  if(!SR){toast('Dictée non disponible sur ce navigateur : utilise le micro 🎤 du clavier',1);return}
+  if(rec&&recBtn===b){stopMic();return}
+  stopMic();
+  const ta=$(b.dataset.mic);const base=ta.value.trim();
+  const r=new SR();r.lang='fr-FR';r.interimResults=true;r.continuous=false;r.maxAlternatives=1;
+  rec=r;recBtn=b;b.classList.add('on');b.textContent='⏺ J\'écoute… (stop)';
+  let finalTxt='';
+  r.onresult=ev=>{let interim='';for(let i=ev.resultIndex;i<ev.results.length;i++){const t=ev.results[i][0].transcript;if(ev.results[i].isFinal)finalTxt+=t;else interim+=t}
+    ta.value=(base?base+' ':'')+(finalTxt+interim).trim()};
+  r.onerror=ev=>{const m={'not-allowed':'Autorise le micro pour ce site dans les réglages du navigateur','service-not-allowed':'Autorise le micro pour ce site dans les réglages du navigateur','no-speech':'Je n\'ai rien entendu, réessaie','audio-capture':'Aucun micro trouvé','network':'Dictée : pas de connexion internet'}[ev.error]||('Dictée : '+ev.error);toast(m,1);log('Dictée',ev.error)};
+  r.onend=()=>{b.classList.remove('on');b.textContent='🎤 Dicter';if(rec===r){rec=null;recBtn=null}};
+  try{r.start()}catch(err){toast('Dictée impossible : '+err.message,1);r.onend()}
+});
 
 /* ================= INIT ================= */
 renderKeys();
