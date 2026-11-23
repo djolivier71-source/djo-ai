@@ -7,8 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Voanh Studio">
-<title>Voanh Studio IA</title>
+<meta name="apple-mobile-web-app-title" content="Djo AI">
+<title>Djo AI</title>
 <style>
 :root{
   --bg:#0b0b12;--card:#15151f;--card2:#1d1d2a;--line:#2a2a3a;--txt:#f2f2f7;--mut:#9a9ab0;
@@ -104,8 +104,8 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 </head>
 <body>
 <header>
-  <div class="logo">V</div>
-  <h1>Voanh Studio IA</h1>
+  <div class="logo">D</div>
+  <h1>Djo AI</h1>
   <div class="keydot" id="keydot"><i></i><span>Clé</span></div>
 </header>
 
@@ -200,7 +200,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
       <input type="password" id="keyIn" placeholder="Colle une clé ici" autocomplete="off">
       <button class="btn sm" id="keyAdd" style="flex:none">Ajouter</button>
     </div>
-    <p class="hint">Plusieurs clés ? Ajoute-les toutes : l'app les utilise à tour de rôle pour éviter les limites.</p>
+    <p class="hint">Tu peux ajouter ta clé gratuite et une clé entreprise : elles ont chacune leur limite, l'app les utilise à tour de rôle. (Plusieurs clés gratuites du même compte partagent la même limite.)</p>
     <button class="btn ghost mt" id="keyTest">Tester la connexion</button>
   </div>
   <div class="card">
@@ -318,13 +318,25 @@ async function genVideo(prompt,ratio,frame,onProg){
   if(PLAN==='free'){const [w,h]=FREE_SIZES[ratio]||FREE_SIZES['9:16'];body={model,prompt,num_frames:97,frame_rate:12,width:w,height:h};if(frame)body.image=frame}
   else{body={model,prompt,seconds:'10',mode:'keyframe',size:'720P',aspect_ratio:ratio};if(frame)body.first_frame=frame}
   const key=nextKey();keyIdx--; // la même clé sert pour le suivi
-  const d=await post('/videos',body,2);
+  // Réessaie tout seul si le modèle est momentanément indisponible (jusqu'à 30 min)
+  let d,tries=0;const tStart=Date.now();
+  while(true){
+    if(vidCancel)throw new Error('Annulé');
+    try{d=await post('/videos',body,1);break}
+    catch(e){
+      const busyErr=/unavailable|try again|overload|busy|capacity|503|502|504|timeout|Trop de requêtes|429|Failed to fetch/i.test(e.message);
+      if(!busyErr||Date.now()-tStart>30*60*1000)throw e;
+      tries++;log('Modèle indisponible, nouvel essai dans 60 s (essai '+tries+')');
+      for(let s=60;s>0;s--){if(vidCancel)throw new Error('Annulé');onProg&&onProg('wait',0,s,tries);await sleep(1000)}
+    }
+  }
   let direct=findVideoUrl(d);if(direct)return direct;
   const ids=videoIds(d);if(!ids.length)throw new Error('Aucun identifiant vidéo reçu');
   log('Vidéo lancée',ids.join(' / '));
   const t0=Date.now();let i=0;
   while(Date.now()-t0<30*60*1000){
     await sleep(6000);
+    if(vidCancel)throw new Error('Annulé');
     const vid=ids[i%ids.length];i++;
     try{
       const r=await fetch(POLL+'?video_id='+encodeURIComponent(vid)+'&model_name='+encodeURIComponent(model),{headers:{Authorization:'Bearer '+(KEYS.length?KEYS[(keyIdx)%KEYS.length]:key)}});
@@ -357,7 +369,7 @@ async function save(type,src,prompt,extra={}){
 function itemSrc(it){return it.blob?URL.createObjectURL(it.blob):it.url}
 function download(src,name){const a=document.createElement('a');a.href=src;a.download=name;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}
 async function downloadAny(u,name){const b=u instanceof Blob?u:await toBlob(u);if(b){const x=URL.createObjectURL(b);download(x,name);setTimeout(()=>URL.revokeObjectURL(x),30000)}else download(u,name)}
-async function shareAny(u,name,type){try{const b=u instanceof Blob?u:await toBlob(u);const f=new File([b],name,{type:b.type||type});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Voanh Studio IA'});return}}catch(e){if(e&&e.name==='AbortError')return}downloadAny(u,name)}
+async function shareAny(u,name,type){try{const b=u instanceof Blob?u:await toBlob(u);const f=new File([b],name,{type:b.type||type});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Djo AI'});return}}catch(e){if(e&&e.name==='AbortError')return}downloadAny(u,name)}
 
 /* ================= KEYS UI ================= */
 function renderKeys(){
@@ -397,7 +409,7 @@ $('#imgIdea').onclick=()=>{$('#imgPrompt').value=IDEAS[Math.floor(Math.random()*
 function resCard(kind,src,prompt,item){
   const d=document.createElement('div');d.className='res';
   d.innerHTML=(kind==='image'?`<img src="${src}" alt="">`:`<video src="${src}" controls playsinline loop></video>`)+`<div class="acts"><button class="mini" data-a="dl">⬇️ Garder</button><button class="mini" data-a="share">📤</button>${kind==='image'?'<button class="mini" data-a="anim">🎬 Animer</button><button class="mini" data-a="var">🔁</button>':''}</div>`;
-  d.onclick=e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.a;const name='voanh-'+Date.now()+(kind==='image'?'.png':'.mp4');
+  d.onclick=e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.a;const name='djo-ai-'+Date.now()+(kind==='image'?'.png':'.mp4');
     if(a==='dl')downloadAny(item&&item.blob||src,name);
     if(a==='share')shareAny(item&&item.blob||src,name,kind==='image'?'image/png':'video/mp4');
     if(a==='anim')useAsFrame(item&&item.blob||src);
@@ -419,7 +431,7 @@ $('#imgGo').onclick=async()=>{
 };
 
 /* ================= VIDEO ================= */
-let vidRatio='9:16',vidFrame=null,vidCam='';
+let vidRatio='9:16',vidFrame=null,vidCam='',vidCancel=false;
 seg($('#vidRatio'),[['9:16','📱 Portrait'],['1:1','⬜ Carré'],['16:9','🖥️ Paysage']],vidRatio,v=>vidRatio=v);
 const CAMS=[['','Auto'],['slow dolly-in, camera slowly pushes forward','Travelling avant'],['slow dolly-out revealing the scene','Travelling arrière'],['smooth orbit around the subject','Tour autour'],['drone aerial shot rising up','Drone'],['handheld camera, documentary feel','Caméra à l\'épaule'],['static locked-off shot','Plan fixe'],['slow motion','Ralenti']];
 chips($('#vidCam'),CAMS,'',v=>vidCam=v);
@@ -442,10 +454,13 @@ $('#vidGo').onclick=async()=>{
   if(!KEYS.length){toast('Ajoute ta clé Agnès dans Réglages',1);return go('settings')}
   const full=(p||'subtle natural motion, cinematic')+(vidCam?', '+vidCam:'');
   const box=document.createElement('div');box.className='card';
-  box.innerHTML=`<div class="ph" style="aspect-ratio:auto;padding:24px"><div><div class="spin"></div><div class="st">Envoi de la demande…</div><div class="prog"><b></b></div><div class="hint">Une vidéo prend en général 1 à 5 minutes. Garde l'app ouverte.</div></div></div>`;
-  $('#vidOut').prepend(box);const btn=$('#vidGo');btn.disabled=true;
+  box.innerHTML=`<div class="ph" style="aspect-ratio:auto;padding:24px"><div><div class="spin"></div><div class="st">Envoi de la demande…</div><div class="prog"><b></b></div><div class="hint">Une vidéo prend en général 1 à 5 minutes. Garde l'app ouverte.</div><button class="mini mt vcancel">✕ Annuler</button></div></div>`;
+  $('#vidOut').prepend(box);const btn=$('#vidGo');btn.disabled=true;vidCancel=false;
+  box.querySelector('.vcancel').onclick=()=>{vidCancel=true;box.querySelector('.st').textContent='Annulation…'};
   try{
-    const u=await genVideo(full,vidRatio,vidFrame,(s,pr,sec)=>{box.querySelector('.st').textContent=(s?('Statut : '+s):'En cours')+' · '+sec+' s';box.querySelector('.prog b').style.width=Math.max(5,Math.min(100,pr>1?pr:pr*100||sec/2))+'%'});
+    const u=await genVideo(full,vidRatio,vidFrame,(s,pr,sec,tries)=>{
+      if(s==='wait'){box.querySelector('.st').textContent='⏳ Modèle Agnès occupé, nouvel essai dans '+sec+' s (essai '+tries+')';box.querySelector('.prog b').style.width='3%';return}
+      box.querySelector('.st').textContent=(s?('Statut : '+s):'En cours')+' · '+sec+' s';box.querySelector('.prog b').style.width=Math.max(5,Math.min(100,pr>1?pr:pr*100||sec/2))+'%'});
     box.querySelector('.st').textContent='Téléchargement…';
     const it=await save('video',u,p);box.replaceWith(resCard('video',itemSrc(it),p,it));toast('Vidéo prête 🎬');
   }catch(e){box.innerHTML='<div class="ph" style="aspect-ratio:auto">⚠️ '+esc(e.message)+'</div>'}
@@ -628,8 +643,8 @@ function openItem(it,src){
   const ext=it.type==='image'?'.png':it.type==='video'?'.mp4':'.wav';
   $('#mActs').innerHTML=`<button class="mini" data-a="dl">⬇️ Télécharger</button><button class="mini" data-a="share">📤 Partager</button>${it.type==='image'?'<button class="mini" data-a="anim">🎬 Animer</button>':''}<button class="mini" data-a="reuse">✏️ Réutiliser le texte</button><button class="mini" data-a="del" style="color:var(--err)">🗑️ Supprimer</button>`;
   $('#mActs').onclick=async e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.a;const s=it.blob||src;
-    if(a==='dl')downloadAny(s,'voanh-'+it.id+ext);
-    if(a==='share')shareAny(s,'voanh-'+it.id+ext,it.blob&&it.blob.type);
+    if(a==='dl')downloadAny(s,'djo-ai-'+it.id+ext);
+    if(a==='share')shareAny(s,'djo-ai-'+it.id+ext,it.blob&&it.blob.type);
     if(a==='anim'){closeM();useAsFrame(s)}
     if(a==='reuse'){closeM();const v=it.type==='image'?'image':it.type==='video'?'video':'music';$({image:'#imgPrompt',video:'#vidPrompt',music:'#musPrompt'}[v]).value=it.prompt||'';go(v)}
     if(a==='del'){await dbDel(it.id);closeM();renderGallery();toast('Supprimé')}};
@@ -642,7 +657,7 @@ let clearArm=0;$('#galClear').onclick=async e=>{if(Date.now()-clearArm>3000){cle
 /* ================= INIT ================= */
 renderKeys();
 if(!KEYS.length)setTimeout(()=>toast('Bienvenue ! Ajoute ta clé Agnès dans ⚙️ Réglages'),600);
-log('Voanh Studio IA prêt');
+log('Djo AI prêt');
 </script>
 </body>
 </html>
